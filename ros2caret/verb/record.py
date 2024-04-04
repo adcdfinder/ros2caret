@@ -34,10 +34,12 @@ from tracetools_trace.tools import lttng, names, path
 from tracetools_trace.tools.signals import execute_and_handle_sigint
 
 
+
 class CaretSessionNode(Node):
 
     def __init__(self):
-        super().__init__('caret_session_node')
+        tPid = os.getpid()
+        super().__init__('caret_session_node_' + str(tPid))
         pub_qos = qos.QoSProfile(
             history=qos.HistoryPolicy.KEEP_LAST,
             depth=1,
@@ -59,6 +61,20 @@ class CaretSessionNode(Node):
         self._caret_node_names = set()
         self._progress = None
         self.started = False
+        
+        all_node_names = self.get_node_names()
+        # NOTE: caret_trace creates nodes with the name caret_trace_[pid].
+        t_caret_node_names = {
+            node_name
+            for node_name
+            in all_node_names
+            if 'caret_session_node_' in node_name
+        }
+        if len(t_caret_node_names) > 0:
+            self.is_slave = True
+        else:
+            self.is_slave = False
+
 
     def subscription_callback(self, msg):
         if msg.status != Status.RECORD:
@@ -100,14 +116,23 @@ class CaretSessionNode(Node):
                 total=caret_node_num,
                 bar_format='{n}/{total} process started recording', leave=True)
 
-        msg = Start()
-        msg.recording_frequency = 100 if recording_frequency is None else int(recording_frequency)
-        self._start_pub_.publish(msg)
+        if self.is_slave:
+            print("Please start the record in master node.")
+        else:
+            input("This is slave node. Please make sure all slave nodes have been started and press Enter to continue")
+            msg = Start()
+            msg.recording_frequency = 100 if recording_frequency is None else int(recording_frequency)
+            self._start_msg = msg
+            self.pubStartMsg()
         return caret_node_num
-
+        
     def end(self):
         msg = End()
         self._end_pub_.publish(msg)
+
+    def pubStartMsg(self):
+        self._start_pub_.publish(self._start_msg)
+
 
 
 class RecordVerb(VerbExtension):
@@ -217,9 +242,11 @@ class RecordVerb(VerbExtension):
         init(**init_args)
 
         def _run():
+             
             recordable_node_num = node.start(args.verbose, args.recording_frequency)
             while not node.started and recordable_node_num > 0:
                 rclpy.spin_once(node)
+
             try:
                 input('press enter to stop...')
             except EOFError:
