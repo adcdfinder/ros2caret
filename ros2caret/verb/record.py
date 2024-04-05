@@ -109,7 +109,7 @@ class CaretSessionNode(Node):
             if 'caret_trace_' in node_name
         }
         caret_node_num = len(self._caret_node_names)
-        if caret_node_num > 0:
+        if caret_node_num > 1:
             print(f'{caret_node_num} recordable processes found.')
         if verbose:
             self._progress = tqdm(
